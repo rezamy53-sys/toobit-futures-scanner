@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>اسکنر فیوچرز Toobit</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#e8eefb;font-family:Tahoma,Arial,sans-serif}
+header{padding:22px 5%;background:#111c30;border-bottom:1px solid #25344d}h1{margin:0 0 8px;font-size:23px}
+main{max-width:1200px;margin:24px auto;padding:0 16px}.panel,.card{background:#111c30;border:1px solid #263650;border-radius:13px;padding:15px;margin-bottom:14px}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,select{background:#203653;color:white;border:1px solid #3a5578;border-radius:8px;padding:11px 14px;font-size:14px}
+button{background:#176bce;cursor:pointer}button:disabled{opacity:.5}.muted{color:#aab8d0;font-size:13px;line-height:1.8}.status{margin-top:10px;color:#b8c9e4}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.card{background:#14223a;margin:0}.sym{direction:ltr;text-align:right;font-weight:bold}
+.signal{font-weight:bold;margin:8px 0}.long{color:#38d996}.short{color:#ff7e86}.wait{color:#f3c96a}
+.kv{display:flex;justify-content:space-between;gap:8px;margin:7px 0;font-size:13px}.warn{border-right:3px solid #e6ad45;background:#29271f}
+</style></head><body>
+<header><h1>اسکنر فیوچرز Toobit</h1><div class="muted">نسخه آزمایشی • فقط دریافت داده عمومی • بدون ثبت سفارش</div></header>
+<main>
+<div class="panel"><div class="controls"><label>تایم‌فریم:
+<select id="tf"><option value="15m">۱۵ دقیقه</option><option value="30m">۳۰ دقیقه</option><option value="1h">۱ ساعت</option></select></label>
+<button id="scan">شروع اسکن</button><button id="next" disabled>اسکن دسته بعدی</button><button id="health">آزمایش اتصال</button></div><div id="status" class="status">برای شروع یکی از دکمه‌ها را بزنید.</div></div>
+<div class="panel warn muted">این ابزار فقط غربالگری تکنیکال است و توصیه مالی نیست. ورود، حد ضرر و اهداف محاسبات نمونه‌اند. در این نسخه هیچ سفارشی ثبت نمی‌شود.</div>
+<div class="panel"><div class="controls"><b>نتایج اسکن</b><span id="count" class="muted"></span></div><div id="results" class="grid"></div></div>
+<div class="panel"><b>شاخص‌ها</b><p class="muted">RSI، MACD، EMA20/EMA50، فیبوناچی، ایچیموکو، بولینگر، استوکاستیک و OBV. داده‌های آن‌چین در این نسخه پیاده‌سازی نشده‌اند.</p></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let nextOffset=0;
+const fmt=x=>x==null||!Number.isFinite(Number(x))?'—':Number(x).toPrecision(7);
+async function api(url){const r=await fetch(url);const j=await r.json();if(!r.ok)throw new Error(j.detail||'خطای سرور');return j}
+$('health').onclick=async()=>{$('status').textContent='در حال آزمایش اتصال...';try{await api('/api/health');$('status').textContent='اتصال سرور برقرار است و Toobit پاسخ داده است.'}catch(e){$('status').textContent='خطا: '+e.message}};
+async function runScan(offset){
+ $('scan').disabled=true;$('next').disabled=true;$('status').textContent='در حال دریافت کندل‌ها و تحلیل نمادها...';
+ try{
+  const interval=$('tf').value;
+  const d=await api(`/api/scan?interval=${encodeURIComponent(interval)}&offset=${offset}&batch=20`);
+  nextOffset=d.nextOffset;$('count').textContent=`${d.scanned} نماد در این دسته | مجموع نمادها: ${d.totalSymbols}`;
+  $('results').innerHTML=d.results.map(x=>{
+   const s=x.signal||'WAIT',cl=s==='LONG'?'long':s==='SHORT'?'short':'wait';
+   const fa=s==='LONG'?'لانگ':s==='SHORT'?'شورت':s==='ERROR'?'خطا':'انتظار';
+   const score=s==='LONG'?x.longScore:s==='SHORT'?x.shortScore:'—';
+   return `<div class="card"><div class="sym">${x.symbol||'نامشخص'}</div><div class="signal ${cl}">${fa} (${score}/7)</div>
+   <div class="kv"><span>قیمت</span><b>${fmt(x.price)}</b></div><div class="kv"><span>ورود</span><b>${fmt(x.entry)}</b></div>
+   <div class="kv"><span>حد ضرر</span><b>${fmt(x.stopLoss)}</b></div><div class="kv"><span>اهداف</span><b>${(x.targets||[]).map(fmt).join(' / ')||'—'}</b></div>
+   <div class="kv"><span>RSI</span><b>${fmt(x.rsi)}</b></div><div class="kv"><span>استوکاستیک</span><b>${fmt(x.stochasticK)}</b></div>
+   <div class="kv"><span>روند OBV</span><b>${x.obvTrend||'—'}</b></div>${x.error?`<div class="muted">${x.error}</div>`:''}</div>`;
+  }).join('');
+  $('status').textContent=`اسکن دسته فعلی در تایم‌فریم ${interval} تمام شد.`;$('next').disabled=!nextOffset;
+ }catch(e){$('status').textContent='خطا در اسکن: '+e.message}
+ finally{$('scan').disabled=false}
+}
+$('scan').onclick=()=>runScan(0);$('next').onclick=()=>runScan(nextOffset);
+</script></body></html>
